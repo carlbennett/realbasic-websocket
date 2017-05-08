@@ -22,6 +22,7 @@ Protected Class WebSocketMessage
 		  Dim reserved3  As Boolean = ( BitAnd(buf.UInt8Value(0), &H10) > 0 )
 		  Dim opCode     As UInt8   = ( BitAnd(buf.UInt8Value(0), &H0F) )
 		  Dim masked     As Boolean = ( BitAnd(buf.UInt8Value(1), &H80) > 0 )
+		  Dim maskKey    As UInt32
 		  Dim msgLen     As UInt64  = ( BitAnd(buf.UInt8Value(1), &H7F) )
 		  Dim msgPad     As UInt8   = 2
 		  Dim msgRaw     As String
@@ -35,6 +36,17 @@ Protected Class WebSocketMessage
 		    
 		    msgLen = buf.UInt64Value(2)
 		    msgPad = 10
+		    
+		  End If
+		  
+		  If Not masked Then
+		    
+		    maskKey = 0
+		    
+		  Else
+		    
+		    maskKey = buf.UInt32Value(msgPad)
+		    msgPad = msgPad + 4
 		    
 		  End If
 		  
@@ -52,6 +64,7 @@ Protected Class WebSocketMessage
 		  
 		  Me.FinalFrame    = finalFrame
 		  Me.Masked        = masked
+		  Me.MaskKey       = maskKey
 		  Me.OperationCode = opCode
 		  Me.Payload       = msgRaw
 		  Me.Reserved1     = reserved1
@@ -62,10 +75,11 @@ Protected Class WebSocketMessage
 	#tag EndMethod
 
 	#tag Method, Flags = &h0
-		Sub Constructor(Payload As String, OperationCode As UInt8, Reserved1 As Boolean = False, Reserved2 As Boolean = False, Reserved3 As Boolean = False, Masked As Boolean = False, FinalFrame As Boolean = True)
+		Sub Constructor(Payload As String, OperationCode As UInt8, Reserved1 As Boolean = False, Reserved2 As Boolean = False, Reserved3 As Boolean = False, Masked As Boolean = False, MaskKey As UInt32 = 0, FinalFrame As Boolean = True)
 		  
 		  Me.FinalFrame    = FinalFrame
 		  Me.Masked        = Masked
+		  Me.MaskKey       = MaskKey
 		  Me.OperationCode = OperationCode
 		  Me.Payload       = Payload
 		  Me.Reserved1     = Reserved1
@@ -73,6 +87,33 @@ Protected Class WebSocketMessage
 		  Me.Reserved3     = Reserved3
 		  
 		End Sub
+	#tag EndMethod
+
+	#tag Method, Flags = &h0
+		 Shared Function Mask(value As String) As String
+		  
+		  Dim original_octet_i As UInt8
+		  Dim transformed_octet_i As UInt8
+		  Dim masking_key_octet_j As UInt8
+		  Dim iterator, count As UInt64
+		  Dim buffer As String
+		  Dim key As New MemoryBlock(4)
+		  
+		  key.UInt32Value(0) = Me.MaskKey
+		  
+		  count = LenB(value)
+		  
+		  Do Until iterator > count
+		    original_octet_i = AscB(MidB(value, iterator, 1))
+		    masking_key_octet_j = key.UInt8Value(original_octet_i Mod 4)
+		    transformed_octet_i = original_octet_i Mod masking_key_octet_j
+		    buffer = buffer + ChrB(transformed_octet_i)
+		    iterator = iterator + 1
+		  Loop
+		  
+		  Return buffer
+		  
+		End Function
 	#tag EndMethod
 
 	#tag Method, Flags = &h0
@@ -84,6 +125,7 @@ Protected Class WebSocketMessage
 		    Raise e
 		  End If
 		  
+		  Dim mbSize As UInt64
 		  Dim msgLen As UInt64 = LenB(Me.Payload)
 		  Dim msgPad As UInt8  = 2
 		  
@@ -91,9 +133,12 @@ Protected Class WebSocketMessage
 		    msgPad = 4
 		  ElseIf msgLen > 65535 Then
 		    msgPad = 10
+		    msgLen = BitAnd(msgLen, &H7FFFFFFFFFFFFFFF) // RFC 6455
 		  End If
 		  
-		  Dim buf As New MemoryBlock(msgPad + msgLen)
+		  If Me.Masked Then mbSize = msgPad + 4 + msgLen Else mbSize = msgPad + msgLen
+		  
+		  Dim buf As New MemoryBlock(mbSize)
 		  
 		  buf.LittleEndian = False
 		  
@@ -122,6 +167,11 @@ Protected Class WebSocketMessage
 		    
 		  End If
 		  
+		  If Me.Masked Then
+		    buf.UInt32Value(msgPad) = Me.MaskKey
+		    msgPad = msgPad + 4
+		  End If
+		  
 		  buf.StringValue(msgPad, buf.Size - msgPad) = Me.payload
 		  
 		  Return buf
@@ -147,6 +197,10 @@ Protected Class WebSocketMessage
 
 	#tag Property, Flags = &h0
 		Masked As Boolean
+	#tag EndProperty
+
+	#tag Property, Flags = &h0
+		MaskKey As UInt32
 	#tag EndProperty
 
 	#tag Property, Flags = &h0
@@ -191,6 +245,11 @@ Protected Class WebSocketMessage
 
 	#tag ViewBehavior
 		#tag ViewProperty
+			Name="FinalFrame"
+			Group="Behavior"
+			Type="Boolean"
+		#tag EndViewProperty
+		#tag ViewProperty
 			Name="Index"
 			Visible=true
 			Group="ID"
@@ -205,10 +264,35 @@ Protected Class WebSocketMessage
 			InheritedFrom="Object"
 		#tag EndViewProperty
 		#tag ViewProperty
+			Name="Masked"
+			Group="Behavior"
+			Type="Boolean"
+		#tag EndViewProperty
+		#tag ViewProperty
 			Name="Name"
 			Visible=true
 			Group="ID"
 			InheritedFrom="Object"
+		#tag EndViewProperty
+		#tag ViewProperty
+			Name="Payload"
+			Group="Behavior"
+			Type="String"
+		#tag EndViewProperty
+		#tag ViewProperty
+			Name="Reserved1"
+			Group="Behavior"
+			Type="Boolean"
+		#tag EndViewProperty
+		#tag ViewProperty
+			Name="Reserved2"
+			Group="Behavior"
+			Type="Boolean"
+		#tag EndViewProperty
+		#tag ViewProperty
+			Name="Reserved3"
+			Group="Behavior"
+			Type="Boolean"
 		#tag EndViewProperty
 		#tag ViewProperty
 			Name="Super"

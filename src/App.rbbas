@@ -8,7 +8,7 @@ Inherits ConsoleApplication
 		  
 		  Me.client = New WebSocketClientTest()
 		  
-		  Me.client.Address = "127.0.0.1"
+		  Me.client.Address = "192.168.1.100"
 		  Me.client.Port    = 8080
 		  
 		  Me.client.Path    = "/"
